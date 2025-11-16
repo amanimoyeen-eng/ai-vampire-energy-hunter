@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Vampire Energy Hunter</title>
+<style>
+body { font-family: Arial, sans-serif; background:#07101a; color:#cfeff3; margin:0; padding:20px;}
+h1,h2,h3{color:#00f0ff;}
+.container{max-width:900px;margin:auto;}
+input, button, select{padding:5px;margin:2px;border-radius:4px;border:none;}
+button{background:#00f0ff;color:#07101a;cursor:pointer;}
+.device-card{background:#0f1a2b;padding:10px;margin:5px;border-radius:6px;}
+.mentor{background:#002b1a;padding:10px;margin:10px 0;border-left:4px solid #00ff8f;}
+.progress-bar{height:20px;border-radius:10px;background:#0f1a2b;margin:5px 0;overflow:hidden;}
+.progress-fill{height:100%;width:0%;text-align:right;padding-right:5px;line-height:20px;color:#07101a;font-weight:bold;}
+.good{background:#00ff8f;}
+.caution{background:#ffcc00;}
+.warning{background:#ff4444;}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>AI Vampire Energy Hunter</h1>
+
+<h2>Add a device</h2>
+Device Name: <input id="deviceName" placeholder="e.g. TV"><br>
+Idle Watts: <input type="number" id="deviceWatts" value="0"><br>
+<button onclick="addDevice()">Add Device</button>
+
+<h2>Quick Picks</h2>
+<select id="quickPick">
+<option value="">Select a device</option>
+</select>
+<button onclick="addQuickPick()">Add</button>
+
+<h2>Vampire Dashboard</h2>
+<div id="dashboard"></div>
+
+<h2>Totals</h2>
+<div id="totals"></div>
+
+<h2>Progress</h2>
+<b>Energy Usage</b>
+<div class="progress-bar"><div id="energyBar" class="progress-fill"></div></div>
+<b>Monthly Cost</b>
+<div class="progress-bar"><div id="costBar" class="progress-fill"></div></div>
+<b>CO₂ Footprint</b>
+<div class="progress-bar"><div id="co2Bar" class="progress-fill"></div></div>
+
+<h2>Your AI Mentor</h2>
+<div id="mentor" class="mentor">
+Welcome! Add devices and I’ll help you reduce energy waste and CO₂ emissions.
+</div>
+</div>
+
+<script>
+const DEVICE_DB = [
+  { name: "Phone Charger", watts: 0.5 },
+  { name: "Laptop Charger", watts: 2.5 },
+  { name: "TV", watts: 1.5 },
+  { name: "Game Console", watts: 8 },
+  { name: "Printer", watts: 4 },
+  { name: "Router", watts: 5 },
+  { name: "Set-top Box", watts: 12 },
+  { name: "Smart Bulb", watts: 0.5 },
+  { name: "Desktop PC", watts: 15 },
+  { name: "Coffee Maker", watts: 1 },
+  { name: "Microwave", watts: 2 },
+];
+
+const quickPickSelect = document.getElementById("quickPick");
+DEVICE_DB.forEach(d=>{
+  const opt = document.createElement("option");
+  opt.value = d.name;
+  opt.textContent = `${d.name} (~${d.watts}W idle)`;
+  quickPickSelect.appendChild(opt);
+});
+
+let devices = [];
+const energyPrice = 0.2;
+const co2PerKwh = 0.45;
+const hoursPerDay = 24;
+const energyLimit = 150; // kWh per month threshold
+const costLimit = 30; // $ per month threshold
+const co2Limit = 60; // kg CO2 per month threshold
+
+function wattsToKwh(watts) { return (watts*hoursPerDay*30)/1000; }
+
+function generateAdvice(device){
+  if(device.watts >= 10) return "High standby drain! Use smart plugs or unplug when idle.";
+  if(device.watts >= 2) return "Moderate drain. Consider timers or auto-sleep modes.";
+  return "Low drain. Unplug chargers when not in use for extra savings.";
+}
+
+function addDevice(){
+  const name = document.getElementById("deviceName").value;
+  let watts = parseFloat(document.getElementById("deviceWatts").value);
+  if(!name) return;
+
+  const dbMatch = DEVICE_DB.find(d=>d.name.toLowerCase()===name.toLowerCase());
+  if(dbMatch) watts = dbMatch.watts;
+
+  devices.push({name, watts});
+  document.getElementById("deviceName").value="";
+  document.getElementById("deviceWatts").value=0;
+  renderDashboard();
+}
+
+function addQuickPick(){
+  const selection = quickPickSelect.value;
+  if(!selection) return;
+  const dbMatch = DEVICE_DB.find(d=>d.name===selection);
+  if(dbMatch){
+    devices.push({name: dbMatch.name, watts: dbMatch.watts});
+    renderDashboard();
+  }
+}
+
+function removeDevice(name){
+  devices = devices.filter(d=>d.name!==name);
+  renderDashboard();
+}
+
+function updateProgressBar(id, value, limit){
+  const percent = Math.min((value/limit)*100, 100);
+  const bar = document.getElementById(id);
+  bar.style.width = percent+"%";
+  if(percent<50) bar.className="progress-fill good";
+  else if(percent<80) bar.className="progress-fill caution";
+  else bar.className="progress-fill warning";
+  bar.textContent = value.toFixed(2);
+}
+
+function mentorFeedback(totals){
+  const messages = [];
+  if(totals.kwh > energyLimit) messages.push("<span class='warning'>⚠️ Energy too high! Unplug high-drain devices.</span>");
+  if(totals.dollars > costLimit) messages.push("<span class='warning'>💰 Cost high! Use timers or smart plugs.</span>");
+  if(totals.kgCO2 > co2Limit) messages.push("<span class='warning'>🌍 CO₂ above safe level. Switch to efficient devices.</span>");
+  if(totals.kwh <= 50) messages.push("<span class='good'>✅ Low energy usage! Keep it up.</span>");
+  if(messages.length===0) messages.push("<span class='caution'>💡 All good! Keep monitoring idle power.</span>");
+  return messages.join("<br>");
+}
+
+function renderDashboard(){
+  const dash = document.getElementById("dashboard");
+  dash.innerHTML="";
+  let totalWatts=0, totalCost=0, totalCO2=0;
+
+  devices.forEach(d=>{
+    const kwh = wattsToKwh(d.watts);
+    const cost = kwh*energyPrice;
+    const co2 = kwh*co2PerKwh;
+    totalWatts+=d.watts;
+    totalCost+=cost;
+    totalCO2+=co2;
+
+    const div = document.createElement("div");
+    div.className="device-card";
+    div.innerHTML=`<b>${d.name}</b> - ${d.watts} W idle<br>
+      Monthly: ${kwh.toFixed(2)} kWh | $${cost.toFixed(2)} | ${co2.toFixed(2)} kg CO₂<br>
+      Advice: ${generateAdvice(d)} <button onclick="removeDevice('${d.name}')">Remove</button>`;
+    dash.appendChild(div);
+  });
+
+  document.getElementById("totals").innerHTML=
+    `<b>Total Watts:</b> ${totalWatts} W<br>
+     <b>Monthly Cost:</b> $${totalCost.toFixed(2)}<br>
+     <b>Monthly CO₂:</b> ${totalCO2.toFixed(2)} kg`;
+
+  updateProgressBar("energyBar", devices.reduce((sum,d)=>sum+wattsToKwh(d.watts),0), energyLimit);
+  updateProgressBar("costBar", totalCost, costLimit);
+  updateProgressBar("co2Bar", totalCO2, co2Limit);
+
+  document.getElementById("mentor").innerHTML = mentorFeedback({
+    kwh: devices.reduce((sum,d)=>sum+wattsToKwh(d.watts),0),
+    dollars: totalCost,
+    kgCO2: totalCO2
+  });
+}
+</script>
+</body>
+</html>
